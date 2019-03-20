@@ -2,6 +2,12 @@ package mapreduce
 
 import (
 	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"encoding/json"
+	"strconv"
+	"os"
+	"strings"
 )
 
 // doMap manages one map task: it reads one of the input files
@@ -53,6 +59,61 @@ func doMap(
 	//
 	// Remember to close the file after you have written all the values!
 	//
+	mapFile, err := ioutil.ReadFile(inFile)
+	if err != nil{
+		log.Fatal("Read file error: ", err)
+	} else {
+		fileKV := mapF(inFile, string(mapFile))
+		fileKVReduceNo := make(map[string][2]string)
+
+		for _, v := range fileKV{
+			reduceNo := ihash(v.Key)
+			newValue := [2]string{strconv.Itoa(reduceNo), v.Value}
+			fileKVReduceNo[v.Key] = newValue
+		}
+
+		for i:=0; i < nReduce; i++ {
+			var iKV []KeyValue
+			for k, v := range fileKVReduceNo{
+				rNo, _ := strconv.Atoi(v[0])
+				if rNo % nReduce == i{
+					newKV := KeyValue{
+						Key:k,
+						Value: string(v[1])}
+					iKV = append(iKV, newKV)
+				}
+			}
+			mapContents, _ := json.Marshal(iKV)
+			contentsReader := strings.NewReader(string(mapContents))
+			jsonDec := json.NewDecoder(contentsReader)
+			reduceFileName := reduceName(jobName, mapTaskNumber, i)
+			resultFile, e := os.Create(reduceFileName)
+
+			if e!= nil{
+				log.Fatal("Error when create result file: ", e)
+			}
+
+			jsonEnc := json.NewEncoder(resultFile)
+			_, err1 := jsonDec.Token()
+			if err1 != nil {
+				log.Fatal(err)
+			}
+			for jsonDec.More(){
+				var kv KeyValue
+				decErr := jsonDec.Decode(&kv)
+				if decErr!=nil{log.Fatal("Error when decode KV: ",decErr)}
+				encE := jsonEnc.Encode(&kv)
+				if encE!=nil{log.Fatal("Error when decode KV: ",encE)}
+
+			}
+			_, err2 := jsonDec.Token()
+			if err2 != nil {
+				log.Fatal(err)
+			}
+			resultFile.Close()
+		}
+
+	}
 }
 
 func ihash(s string) int {
