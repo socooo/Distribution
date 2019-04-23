@@ -57,7 +57,9 @@ import "sync"
 import "log"
 import "strings"
 import "math/rand"
-import "time"
+import (
+	"time"
+)
 
 type reqMsg struct {
 	endname  interface{} // name of sending ClientEnd
