@@ -266,7 +266,7 @@ func (cfg *config) setlongreordering(longrel bool) {
 // try a few times in case re-elections are needed.
 func (cfg *config) checkOneLeader() int {
 	for iters := 0; iters < 10; iters++ {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(2000 * time.Millisecond)
 		leaders := make(map[int][]int)
 		for i := 0; i < cfg.n; i++ {
 			if cfg.connected[i] {
@@ -334,7 +334,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
 		cfg.mu.Unlock()
-
+		//fmt.Printf("in nCommitted, server: %v, index: %v, ok: %v, cmd1: %v.\n", i, index, ok, cmd1)
 		if ok {
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
@@ -391,6 +391,7 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 	starts := 0
 	for time.Since(t0).Seconds() < 10 {
 		// try all the servers, maybe one is the leader.
+		//fmt.Printf("in one, before for, cmd: %v.\n", cmd)
 		index := -1
 		for si := 0; si < cfg.n; si++ {
 			starts = (starts + 1) % cfg.n
@@ -403,12 +404,13 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			if rf != nil {
 				index1, _, ok := rf.Start(cmd)
 				if ok {
+					//fmt.Printf("in one, index: %v, cmd: %v, to server: %v.\n", index1, cmd, starts)
 					index = index1
 					break
 				}
 			}
 		}
-
+		//fmt.Printf("in one, commit index: %v\n", index)
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
@@ -417,8 +419,10 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 				nd, cmd1 := cfg.nCommitted(index)
 				if nd > 0 && nd >= expectedServers {
 					// committed
+					//fmt.Printf("in one, committed, nd: %v, cmd: %v, index: %v.\n", nd, cmd1, index)
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {
 						// and it was the command we submitted.
+						//fmt.Printf("in one, ok return, cmd: %v.\n", cmd)
 						return index
 					}
 				}

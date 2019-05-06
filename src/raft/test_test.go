@@ -88,13 +88,14 @@ func TestBasicAgree2B(t *testing.T) {
 	fmt.Printf("Test (2B): basic agreement ...\n")
 
 	iters := 3
-	for index := 1; index < iters+1; index++ {
+	for index := 1; index < iters + 1; index++ {
 		nd, _ := cfg.nCommitted(index)
 		if nd > 0 {
 			t.Fatalf("some have committed before Start()")
 		}
 
 		xindex := cfg.one(index*100, servers)
+		fmt.Printf("in test_test, xindex: %v.\n", xindex)
 		if xindex != index {
 			t.Fatalf("got index %v but expected %v", xindex, index)
 		}
@@ -115,6 +116,7 @@ func TestFailAgree2B(t *testing.T) {
 	// follower network disconnection
 	leader := cfg.checkOneLeader()
 	cfg.disconnect((leader + 1) % servers)
+	fmt.Printf("in tesr_test server: %v is disconnect.\n", (leader + 1) % servers)
 
 	// agree despite one disconnected server?
 	cfg.one(102, servers-1)
@@ -125,6 +127,7 @@ func TestFailAgree2B(t *testing.T) {
 
 	// re-connect
 	cfg.connect((leader + 1) % servers)
+	fmt.Printf("in test_test server: %v is reconnect.\n", (leader + 1) % servers)
 
 	// agree with full set of servers?
 	cfg.one(106, servers)
