@@ -3,14 +3,34 @@ package main
 import (
 	"fmt"
 	"time"
+	"os"
+	"log"
 )
 
 func main(){
 	//s := test()
 	//println(s)
 	//time.Sleep(4*time.Second)
-	a:=5/2
-	fmt.Printf("a: %v", a)
+	//var a []int
+	//a = append(a, 0)
+	//a = append(a, 1)
+	//a = append(a, 2)
+	//a = append(a, 3)
+	//a = append(a, 4)
+	//a = append(a, 5)
+	//
+	//fmt.Printf("a: %v.\n", a[len(a)-1])
+	//a = a[0:0]
+	//fmt.Printf("a after clear: %v.\n", a)
+
+	fileName := "debug_info.log"
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE, 0777)
+	if err != nil {
+		log.Fatal("Can not create log file, " + err.Error())
+	}
+	debugLog := log.New(file, "aa ", log.Llongfile)
+	debugLog.Printf("this file name")
+	file.Close()
 }
 
 func test() string{
