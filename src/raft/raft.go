@@ -24,7 +24,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"log"
-	"fmt"
 )
 
 //
@@ -40,12 +39,13 @@ type ApplyMsg struct {
 }
 
 type Raft struct {
-	mu sync.Mutex          // Lock to protect shared access to this peer's state
+	mu sync.RWMutex          // Lock to protect shared access to this peer's state
 	peers []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me int                 // this peer's index into peers[]
 	state serverState
 	electionTimer *time.Timer
+	heartBeatTimer *time.Timer
 	applyChan chan ApplyMsg
 	forKill chan struct{}
 
@@ -53,8 +53,6 @@ type Raft struct {
 	CurrentTerm int
 	VotedFor int
 	LogEntries []LogEntry
-	LogIndex int 		// 已知最高日志条目的索引.
-
 
 	// VolatileState
 	CommitIndex int		// 已知已提交的最高日志条目的索引.
@@ -131,18 +129,16 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	w := new(bytes.Buffer)
 	e := gob.NewEncoder(w)
-	e.Encode(rf.LogIndex)
 	e.Encode(rf.CurrentTerm)
 	e.Encode(rf.VotedFor)
 	e.Encode(rf.CommitIndex)
 	e.Encode(rf.LogEntries)
 	data := w.Bytes()
 	DPrintf("in persist, me: %v, persist content: \n" +
-		"\tlogIndex: %v\n" +
 		"\tterm: %v\n" +
 		"\tvoteFor: %v\n" +
 		"\tcommitIndex: %v\n" +
-		"\tlog: %v.\n", rf.me, rf.LogIndex,rf.CurrentTerm,rf.VotedFor,rf.CommitIndex,rf.LogEntries)
+		"\tlog: %v.\n", rf.me, rf.CurrentTerm,rf.VotedFor,rf.CommitIndex,rf.LogEntries)
 	rf.persister.SaveRaftState(data)
 }
 
@@ -157,21 +153,19 @@ func (rf *Raft) readPersist() {
 	}
 	r := bytes.NewBuffer(data)
 	decoder := gob.NewDecoder(r)
-	logIndex, currentTerm, votedFor, commitIndex := 0, 0, 0, 0
-	if decoder.Decode(&logIndex) != nil ||
-		decoder.Decode(&currentTerm) != nil ||
+	currentTerm, votedFor, commitIndex := 0, 0, 0
+	if decoder.Decode(&currentTerm) != nil ||
 		decoder.Decode(&votedFor) != nil ||
 		decoder.Decode(&commitIndex) != nil ||
 		decoder.Decode(&rf.LogEntries) != nil{
 		log.Fatal("error occur in read persist.")
 	}
-	rf.LogIndex,rf.CurrentTerm, rf.VotedFor, rf.CommitIndex = logIndex, currentTerm, votedFor, commitIndex
+	rf.CurrentTerm, rf.VotedFor, rf.CommitIndex = currentTerm, votedFor, commitIndex
 	DPrintf("in read persist, me: %v, persist content: \n" +
-		"\tlogIndex: %v\n" +
 		"\tterm: %v\n" +
 		"\tvoteFor: %v\n" +
 		"\tcommitIndex: %v\n" +
-		"\tlog: %v.\n", rf.me, rf.LogIndex,rf.CurrentTerm,rf.VotedFor,rf.CommitIndex,rf.LogEntries)
+		"\tlog: %v.\n", rf.me, rf.CurrentTerm,rf.VotedFor,rf.CommitIndex,rf.LogEntries)
 }
 
 func (rf *Raft) launchElection() bool{
@@ -179,6 +173,7 @@ func (rf *Raft) launchElection() bool{
 	rf.state = candidate
 	rf.CurrentTerm = rf.CurrentTerm + 1
 	rf.mu.Unlock()
+	lastLogIndex := len(rf.LogEntries) - 1
 	// fmt.Printf("server: %v launch term: %v\n", rf.me, rf.CurrentTerm)
 	serverNum, voteCount := len(rf.peers), 0
 	var majorityNum int
@@ -188,8 +183,8 @@ func (rf *Raft) launchElection() bool{
 	voteArgs := RequestVoteArgs{
 		Term:rf.CurrentTerm,
 		CandidateId: rf.me,
-		LastLogIndex: rf.LogIndex,
-		LastLogTerm: rf.LogEntries[rf.LogIndex].Term,
+		LastLogIndex: lastLogIndex,
+		LastLogTerm: rf.LogEntries[lastLogIndex].Term,
 		LastCommit: rf.CommitIndex}
 	voteChan := make(chan RequestVoteReply)
 
@@ -251,10 +246,13 @@ func (rf *Raft) launchElection() bool{
 func (rf *Raft) Apply(indexOfApply int){
 	oldLastApplied := rf.lastApplied
 	if indexOfApply > rf.lastApplied{
-		fmt.Printf("in Apply server: %v, apply index: %v, content: %v.\n", rf.me, indexOfApply, rf.LogEntries[rf.LogIndex])
+		// fmt.Printf("in Apply server: %v, apply index: %v, last index: %v.\n", rf.me, indexOfApply, len(rf.LogEntries)-1)
 		for j := oldLastApplied + 1; j <= indexOfApply; j++ {
+			rf.mu.RLock()
 			newApplyMsg := ApplyMsg{Index: j,
 				Command: rf.LogEntries[j].Command}
+			rf.mu.RUnlock()
+
 			rf.mu.Lock()
 			rf.lastApplied = j
 			rf.CommitIndex = j
@@ -285,9 +283,13 @@ func (rf *Raft) AppendSend(){
 		rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "AppendSend")) * time.Millisecond)
 		return
 	}
-	checkApplyNo := rf.LogIndex
-	sendFinal := rf.LogIndex + 1
+	lastLogIndex := len(rf.LogEntries) - 1
+	checkApplyNo := lastLogIndex
+	sendFinal := lastLogIndex + 1
 	serverNum := len(rf.peers)
+	rf.mu.RLock()
+	checkApplyTerm := rf.LogEntries[checkApplyNo].Term
+	rf.mu.RUnlock()
 	currentCommit := rf.CommitIndex
 	currentTerm := rf.CurrentTerm
 
@@ -297,7 +299,7 @@ func (rf *Raft) AppendSend(){
 			sendFirst := rf.nextIndex[serverNo]
 			appendArg := rf.constructAppendEntriesArgs(serverNo, sendFirst, sendFinal, currentCommit, currentTerm)
 			appendReply := AppendEntriesReply{}
-			sendAppendTimer := time.NewTimer(100 * time.Millisecond)
+			sendAppendTimer := time.NewTimer(75 * time.Millisecond)
 			for{
 				select{
 				case <- sendAppendTimer.C:
@@ -334,7 +336,7 @@ func (rf *Raft) AppendSend(){
 							//fmt.Printf("send to server: %v done, return.\n", serverNo)
 							commitCount := 0
 							majorityNum := len(rf.peers)/2
-							if checkApplyNo > rf.CommitIndex && rf.LogEntries[checkApplyNo].Term == rf.CurrentTerm {
+							if checkApplyNo > rf.CommitIndex && checkApplyTerm == rf.CurrentTerm {
 								for k := 0; k < serverNum; k++ {
 									if k == rf.me{continue}
 									if checkApplyNo <= rf.matchIndex[k]{
@@ -358,7 +360,7 @@ func (rf *Raft) AppendSend(){
 }
 
 func (rf *Raft) constructAppendEntriesArgs(serverNo int, sendFirst int, sendFinal int, currentCommit int, currentTerm int) (appendArg AppendEntriesArgs){
-	fmt.Printf("in construct, to: %v, sendFirst: %v, sendFinal: %v, matchIndex: %v, logIndex: %v, CommitIndex: %v, term: %v, this server: %v.\n", serverNo, sendFirst, sendFinal, rf.matchIndex[serverNo], rf.LogIndex, rf.CommitIndex, rf.CurrentTerm, rf.me)
+	// fmt.Printf("in construct, to: %v, sendFirst: %v, sendFinal: %v, matchIndex: %v, logIndex: %v, CommitIndex: %v, term: %v, this server: %v.\n", serverNo, sendFirst, sendFinal, rf.matchIndex[serverNo], len(rf.LogEntries) - 1, rf.CommitIndex, rf.CurrentTerm, rf.me)
 	if sendFirst >= sendFinal {
 		appendArg = AppendEntriesArgs{
 			Term: currentTerm,
@@ -403,17 +405,21 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return -1, -1 ,false
 	}
 	rf.mu.Lock()
-	rf.LogIndex = rf.LogIndex + 1
+	newLogIndex := len(rf.LogEntries)
 	newLogEntry := LogEntry{
-		LogIndex: rf.LogIndex,
+		LogIndex: newLogIndex,
 		Term: rf.CurrentTerm,
 		Command: command}
 	rf.LogEntries = append(rf.LogEntries, newLogEntry)
 	rf.mu.Unlock()
-	index := rf.LogIndex
+	index := newLogIndex
 	term := rf.CurrentTerm
 	isLeader := true
 	rf.persist()
+	rf.mu.Lock()
+	rf.heartBeatTimer.Stop()
+	rf.heartBeatTimer.Reset(heartBeatTime)
+	rf.mu.Unlock()
 	go rf.AppendSend()
 	DPrintf("in Start, me: %v, newLogEntry: %v.\n", rf.me, newLogEntry)
 	return index, term, isLeader
@@ -448,7 +454,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.forKill = make(chan struct{})
 	initLogEntry := LogEntry{LogIndex: 0, Term: 0, Command:"init"}
 	rf.LogEntries = append(rf.LogEntries, initLogEntry)
-	rf.LogIndex = 0
 	// initialize from state persisted before a crash
 	rf.readPersist()
 
@@ -461,11 +466,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			case <- rf.electionTimer.C:
 				electionResult := rf.launchElection()
 				if electionResult{
-					heartBeatTimer := time.NewTicker(heartBeatTime)
+					rf.heartBeatTimer = time.NewTimer(heartBeatTime)
 					for{
 						select {
-						case <- heartBeatTimer.C:
+						case <- rf.heartBeatTimer.C:
+							rf.heartBeatTimer.Stop()
 							if rf.state == leader{
+								rf.heartBeatTimer.Reset(heartBeatTime)
 								go rf.AppendSend()
 							} else {
 								rf.electionTimer.Stop()

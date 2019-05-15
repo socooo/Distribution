@@ -2,8 +2,6 @@ package raft
 
 import (
 	"time"
-	"log"
-	"fmt"
 )
 
 //
@@ -42,6 +40,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.SendOk = true
 	reply.Destination = rf.me
 	reply.CandidateId = args.CandidateId
+	lastLogIndex := len(rf.LogEntries) - 1
 	if args.Term > rf.CurrentTerm && rf.state == leader{
 		rf.state = follower
 	}
@@ -62,7 +61,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = false
 		reply.Term = rf.CurrentTerm
 		reason = 3
-	} else if args.LastLogTerm < rf.LogEntries[rf.LogIndex].Term{
+	} else if args.LastLogTerm < rf.LogEntries[lastLogIndex].Term{
 		if args.Term > rf.CurrentTerm {
 			// 当一个服务器断开连接又重新连接后，可能会立即发起选举，此时他的term比其他服务器高，
 			// 但是 CommitIndex 小于其他服务器，其他服务器需要同步他的 term ，否则 append 操作会一直无法完成。
@@ -73,7 +72,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = false
 		reply.Term = rf.CurrentTerm
 		reason = 2
-	} else if args.LastLogTerm == rf.LogEntries[rf.LogIndex].Term && args.LastLogIndex < rf.LogIndex{
+	} else if args.LastLogTerm == rf.LogEntries[lastLogIndex].Term && args.LastLogIndex < lastLogIndex{
 		if args.Term > rf.CurrentTerm {
 			rf.mu.Lock()
 			rf.CurrentTerm = args.Term
@@ -109,8 +108,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.electionTimer.Stop()
 	rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "RequestVote"))*time.Millisecond)
 	rf.mu.Unlock()
-
-	fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[rf.LogIndex], reason)
+	// fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[lastLogIndex], reason)
 
 }
 
@@ -119,10 +117,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.electionTimer.Stop()
 	rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "AppendEntries"))*time.Millisecond)
 	rf.mu.Unlock()
-	fmt.Printf("In append entries, send from: %v, this serverNo: %v,current term: %v, args: %v, log: %v, log index: %v.\n", args.LeaderId, rf.me, rf.CurrentTerm, args, rf.LogEntries[rf.LogIndex], rf.LogIndex)
-	if rf.LogIndex != rf.LogEntries[rf.LogIndex].LogIndex {
-		log.Fatal("rf.LogIndex != index in entries.\n")
-	}
+	lastLogIndex := len(rf.LogEntries) - 1
+	// fmt.Printf("In append entries, send from: %v, this serverNo: %v,current term: %v, args: %v, log: %v, log index: %v.\n", args.LeaderId, rf.me, rf.CurrentTerm, args, rf.LogEntries[lastLogIndex], lastLogIndex)
+	reply.MatchIndex = args.PrevLogIndex
 	entries := args.Entries
 	appendLen := len(entries)
 
@@ -131,7 +128,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.Term = rf.CurrentTerm
 		return
-	}else if rf.LogIndex >= args.PrevLogIndex && args.PrevLogTerm != rf.LogEntries[args.PrevLogIndex].Term{
+	}else if lastLogIndex >= args.PrevLogIndex && args.PrevLogTerm != rf.LogEntries[args.PrevLogIndex].Term{
 		// 若此 server 为 leader，断线后，客户端继续发送了多个 LogEntries，
 		// 重连后，如果在心跳时不检测最新的 log 的term，
 		// 重新链接的老 leader 就会 Apply 这些在断开连接后客户端发送的LogEntries
@@ -139,7 +136,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.Term = rf.CurrentTerm
 		return
-	}else if args.PrevLogIndex > rf.LogIndex{
+	}else if args.PrevLogIndex > lastLogIndex{
 		reply.ConflictIndex = rf.CommitIndex + 1
 		reply.Success = false
 		reply.Term = rf.CurrentTerm
@@ -162,25 +159,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.mu.Unlock()
 		//fmt.Printf("\nin append entries: this server: %v, leader no: %v PrevIndex: %v, log len: %v, receive entries content: %v.\n", rf.me, rf.VotedFor, args.PrevLogIndex, len(rf.LogEntries), entries)
 		if entries != nil{
-			//fmt.Printf("in AE, not hb, prev index: %v, term: %v.\n", args.PrevLogIndex, args.PrevLogTerm)
-			//if entries[entriesLen - 1].LogIndex <= rf.LogIndex{
-			//	if entries[entriesLen - 1].Command != rf.LogEntries[entries[entriesLen - 1].LogIndex].Command {
-			//		// 一个主服务器在持久化了未commit的Log后崩溃，重启后恰好新主服务器的 logIndex 与该重启的服务器一样，但内容不一样
-			//		// 鉴于这种情况需要在心跳时检查主服务器最新索引的信息是否与该服务器同样索引的log内容一致。
-			//		reply.ConflictIndex = rf.CommitIndex + 1
-			//		reply.Success = false
-			//		reply.Term = rf.CurrentTerm
-			//		return
-			//	}
-			//
-			//}
 			appendStart := args.PrevLogIndex + 1
 			if args.PrevLogIndex == 0{
+				rf.mu.Lock()
 				if len(rf.LogEntries) > appendStart{
 					rf.LogEntries = rf.LogEntries[0:1]
 				}
 				rf.LogEntries = append(rf.LogEntries, args.Entries...)
-				rf.LogIndex = rf.LogEntries[len(rf.LogEntries)-1].LogIndex
+				rf.mu.Unlock()
+				lastLogIndex = rf.LogEntries[len(rf.LogEntries)-1].LogIndex
 				//fmt.Printf("in append entries: this server: %v, leader no: %v PrevIndex: %v, log len: %v, append init done, content: %v.\n", rf.me, rf.VotedFor, args.PrevLogIndex, len(rf.LogEntries), rf.LogEntries[len(rf.LogEntries)-1])
 			}else if args.PrevLogIndex > rf.CommitIndex{
 				// 若此 server 断线重连后， CommitIndex 可能落后于主服务器很多条 LogEntries，需要重新发送这些 LogEntries。
@@ -190,43 +177,63 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				//fmt.Printf("in AE, conflict, this: %v, conflict: %v, leader: %v, args content: %v.\n", rf.me, reply.ConflictIndex, args.LeaderId, args)
 				return
 			} else {
-				//fmt.Printf("in AE, start append, this: %v, leader: %v, args content: %v.\n", rf.me, args.LeaderId, args)
-				if rf.LogIndex >= appendStart{
+				// fmt.Printf("in AE, start append, this: %v, leader: %v, args content: %v, log entries: %v.\n", rf.me, args.LeaderId, args, rf.LogEntries)
+				if lastLogIndex >= appendStart{
 					conflictLoc := -1
+					var compareLog = make([]LogEntry, lastLogIndex - args.PrevLogIndex)
+
+					rf.mu.RLock()
+					copy(compareLog, rf.LogEntries[appendStart : lastLogIndex + 1])
+					rf.mu.RUnlock()
+
+					lenCompareLog := len(compareLog)
+
 					for i := 0; i < appendLen; i++ {
-						compareIndex := entries[i].LogIndex
-						if compareIndex > rf.LogIndex {
-							break
-						}
-						fmt.Printf("in AE, compare index: %v.\n", compareIndex)
-						if rf.LogEntries[compareIndex].Term != entries[i].Term{
-							conflictLoc = i
-							break
-						}
+						if i < lenCompareLog {
+							// fmt.Printf("in AE, this server: %v, compare: %v.\n", rf.me, compareIndex)
+							if compareLog[i].Term != entries[i].Term{
+								conflictLoc = i
+								break
+							}
+						}else{break}
 					}
 					if conflictLoc > -1 {
-						rf.LogEntries = rf.LogEntries[:appendStart]
-						rf.LogEntries = append(rf.LogEntries, entries...)
-						rf.LogIndex = rf.LogEntries[len(rf.LogEntries)-1].LogIndex
+						appendEntries := entries[conflictLoc : appendLen]
+						conflictPos := appendStart + conflictLoc
+						rf.mu.Lock()
+						rf.LogEntries = rf.LogEntries[:conflictPos]
+						rf.LogEntries = append(rf.LogEntries, appendEntries...)
+						rf.mu.Unlock()
+
+						//rf.mu.RLock()
+						//fmt.Printf("in AE, conflict, append: %v, log: %v.\n", appendEntries,rf.LogEntries)
+						//rf.mu.RUnlock()
 					} else {
-						if rf.LogIndex < args.Entries[appendLen - 1].LogIndex{
-							rf.LogEntries = rf.LogEntries[:appendStart]
-							rf.LogEntries = append(rf.LogEntries, entries...)
-							rf.LogIndex = rf.LogEntries[len(rf.LogEntries)-1].LogIndex
+						if lastLogIndex < args.Entries[appendLen - 1].LogIndex{
+							appendEntries := entries[lastLogIndex-appendStart+1:]
+							rf.mu.Lock()
+							rf.LogEntries = rf.LogEntries[:lastLogIndex + 1]
+							rf.LogEntries = append(rf.LogEntries, appendEntries...)
+							rf.mu.Unlock()
+							//rf.mu.RLock()
+							//fmt.Printf("in AE, append: %v, log: %v.\n", appendEntries,rf.LogEntries)
+							//rf.mu.RUnlock()
 						}
 						// append 的 log entries 如果相同 index 的 log 内容和该 rf 中的 log 相同，且 index 小于该 rf，
 						// 则不做 append 操作。
 					}
 				} else {
+					rf.mu.Lock()
+					rf.LogEntries = rf.LogEntries[:appendStart]
 					rf.LogEntries = append(rf.LogEntries, entries...)
-					rf.LogIndex = rf.LogEntries[len(rf.LogEntries)-1].LogIndex
+					rf.mu.Unlock()
 				}
 				//fmt.Printf("\nin append entries: this server: %v, leader no: %v PrevIndex: %v, log len: %v, append done, content: %v.\n", rf.me, rf.VotedFor, args.PrevLogIndex, len(rf.LogEntries), rf.LogEntries)
 			}
 			reply.MatchIndex = args.Entries[appendLen - 1].LogIndex
 			rf.persist()
 		}
-		if rf.CommitIndex < args.LeaderCommit{
+		if args.LeaderCommit <= lastLogIndex && rf.CommitIndex < args.LeaderCommit{
 			go rf.Apply(args.LeaderCommit)
 		}
 		reply.Success = true
