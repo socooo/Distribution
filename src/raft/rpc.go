@@ -2,6 +2,7 @@ package raft
 
 import (
 	"time"
+	"fmt"
 )
 
 //
@@ -104,12 +105,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	reply.Reason = reason
 	rf.persist()
-	rf.mu.Lock()
-	rf.electionTimer.Stop()
-	rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "RequestVote"))*time.Millisecond)
-	rf.mu.Unlock()
-	// fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[lastLogIndex], reason)
-
+	if reply.VoteGranted{
+		rf.mu.Lock()
+		rf.electionTimer.Stop()
+		rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "RequestVote"))*time.Millisecond)
+		rf.mu.Unlock()
+	}
+	fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[lastLogIndex], reason)
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply){
@@ -241,4 +243,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 	//fmt.Printf("append result before return: %v\n", reply.Success)
+}
+
+func (rf *Raft)InstallSnapshot(){
+
 }

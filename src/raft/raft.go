@@ -1,22 +1,5 @@
 package raft
 
-//
-// this is an outline of the API that raft must expose to
-// the service (or tester).
-//
-// rf = Make(...)
-//   create a new Raft server.
-// rf.Start(command interface{}) (index, term, isleader)
-//   start agreement on a new log entry
-// rf.GetState() (term, isLeader)
-//   ask a Raft for its current term, and whether it thinks it is leader
-// ApplyMsg
-//   each time a new entry is committed to the log, each Raft peer
-//   should send an ApplyMsg to the service (or tester)
-//   in the same server.
-//
-
-import "sync"
 import (
 	"labrpc"
 	"time"
@@ -24,85 +7,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"log"
-)
-
-//
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make().
-//
-type ApplyMsg struct {
-	Index       int
-	Command     interface{}
-	UseSnapshot bool   // ignore for lab2; only used in lab3
-	Snapshot    []byte // ignore for lab2; only used in lab3
-}
-
-type Raft struct {
-	mu sync.RWMutex          // Lock to protect shared access to this peer's state
-	peers []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
-	me int                 // this peer's index into peers[]
-	state serverState
-	electionTimer *time.Timer
-	heartBeatTimer *time.Timer
-	applyChan chan ApplyMsg
-	forKill chan struct{}
-
-	// PersistState
-	CurrentTerm int
-	VotedFor int
-	LogEntries []LogEntry
-
-	// VolatileState
-	CommitIndex int		// 已知已提交的最高日志条目的索引.
-	lastApplied int		// 应用于状态机的最高日志条目的索引.
-
-	// LeaderVolatileState
-	nextIndex[]	int		// 对于每个服务器，要发送到该服务器的下一个日志条目的索引.
-	matchIndex[] int	// 对于每个服务器，已知在服务器上复制的最高日志条目的索引.
-}
-type LogEntry struct{
-	LogIndex int
-	Term int
-	Command interface{}
-}
-type AppendEntriesArgs struct {
-	Term int
-	LeaderId int
-	PrevLogIndex int	// 紧接在新条目之前的日志条目索引.
-	PrevLogTerm int		// prevLogIndex 条目的 term.
-	Entries []LogEntry
-	LeaderCommit int	// 当大多数服务器都提交了新的 LogEntry 时更新此参数，
-						// 在下次 heartBeat 从服务器根据这个参数调用 Apply() 函数，更新状态。
-}
-type AppendEntriesReply struct {
-	ConflictIndex int
-	Term int
-	Success bool
-	MatchIndex int
-}
-type RequestVoteArgs struct {
-	Term int
-	CandidateId int
-	LastLogIndex int	// 候选人最后一个日志条目的索引.
-	LastLogTerm int		// 候选人最后一个日志条目的 term.
-	LastCommit int
-}
-type RequestVoteReply struct {
-	CandidateId int
-	Term int
-	VoteGranted bool
-	SendOk bool
-	Destination int
-	Reason int
-}
-type serverState int
-const heartBeatTime = time.Duration(120 * time.Millisecond)
-const(
-	leader serverState = iota
-	candidate
-	follower
+	"fmt"
 )
 
 func genVoteTimeOut(serverno int, funName string) int{
@@ -174,7 +79,7 @@ func (rf *Raft) launchElection() bool{
 	rf.CurrentTerm = rf.CurrentTerm + 1
 	rf.mu.Unlock()
 	lastLogIndex := len(rf.LogEntries) - 1
-	// fmt.Printf("server: %v launch term: %v\n", rf.me, rf.CurrentTerm)
+	fmt.Printf("server: %v launch term: %v\n", rf.me, rf.CurrentTerm)
 	serverNum, voteCount := len(rf.peers), 0
 	var majorityNum int
 	if serverNum % 2 == 0{
@@ -195,7 +100,7 @@ func (rf *Raft) launchElection() bool{
 				VoteGranted:false}
 			//fmt.Printf("in launch election, server: %v send voteRequest to : %v, term: %v, reply content: %v.\n", rf.me, j, rf.CurrentTerm, reply)
 			if rf.sendRequestVote(j, &voteArgs, &voteReply){
-				//fmt.Printf("in launch election for term: %v, server: %v, return content: %v.\n", rf.CurrentTerm, rf.me, voteReply)
+				fmt.Printf("in launch election for term: %v, server: %v, return content: %v.\n", rf.CurrentTerm, rf.me, voteReply)
 				voteChan <- voteReply
 			} else {
 				voteChan <- RequestVoteReply{SendOk:false, Destination:j}
@@ -228,7 +133,7 @@ func (rf *Raft) launchElection() bool{
 		}
 	}
 	if voteCount >= majorityNum {
-		DPrintf("receive enough vote: %v, majority is: %v, term: %v.\n", voteCount, majorityNum, rf.CurrentTerm)
+		fmt.Printf("receive enough vote: %v, majority is: %v, term: %v.\n", voteCount, majorityNum, rf.CurrentTerm)
 		rf.mu.Lock()
 		rf.state = leader
 		for i := 0; i < serverNum; i++ {
@@ -244,24 +149,28 @@ func (rf *Raft) launchElection() bool{
 }
 
 func (rf *Raft) Apply(indexOfApply int){
+	// fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, len(rf.LogEntries)-1, rf.lastApplied)
+	rf.mu.Lock()
 	oldLastApplied := rf.lastApplied
+	if indexOfApply > (len(rf.LogEntries)-1) {
+		return
+	}
 	if indexOfApply > rf.lastApplied{
-		// fmt.Printf("in Apply server: %v, apply index: %v, last index: %v.\n", rf.me, indexOfApply, len(rf.LogEntries)-1)
+		//fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, len(rf.LogEntries)-1, rf.lastApplied)
 		for j := oldLastApplied + 1; j <= indexOfApply; j++ {
-			rf.mu.RLock()
 			newApplyMsg := ApplyMsg{Index: j,
-				Command: rf.LogEntries[j].Command}
-			rf.mu.RUnlock()
+				Command: rf.LogEntries[j].Command, me: rf.me}
 
-			rf.mu.Lock()
 			rf.lastApplied = j
 			rf.CommitIndex = j
+			//fmt.Printf("in Apply, before send. server: %v, commit index: %v, channel len: %v.\n", rf.me, rf.CommitIndex, len(rf.applyChan))
 			rf.applyChan <- newApplyMsg
-			rf.mu.Unlock()
 		}
-		// fmt.Printf("Apply done. server: %v, commit index: %v.\n", rf.me, rf.CommitIndex)
+		fmt.Printf("Apply done. server: %v, commit index: %v.\n", rf.me, rf.CommitIndex)
 		rf.persist()
 	}
+	rf.mu.Unlock()
+
 	return
 }
 
@@ -296,7 +205,9 @@ func (rf *Raft) AppendSend(){
 	for i:=0; i < serverNum; i++ {
 		if i==rf.me{continue}
 		go func(serverNo int) {
+			rf.mu.RLock()
 			sendFirst := rf.nextIndex[serverNo]
+			rf.mu.RUnlock()
 			appendArg := rf.constructAppendEntriesArgs(serverNo, sendFirst, sendFinal, currentCommit, currentTerm)
 			appendReply := AppendEntriesReply{}
 			sendAppendTimer := time.NewTimer(75 * time.Millisecond)
@@ -421,21 +332,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.heartBeatTimer.Reset(heartBeatTime)
 	rf.mu.Unlock()
 	go rf.AppendSend()
-	DPrintf("in Start, me: %v, newLogEntry: %v.\n", rf.me, newLogEntry)
+	fmt.Printf("in Start, me: %v, newLogEntry: %v.\n", rf.me, newLogEntry)
 	return index, term, isLeader
 }
 
-//
-// the service or tester wants to create a Raft server. the ports
-// of all the Raft servers (including this one) are in peers[]. this
-// server's port is peers[me]. all the servers' peers[] arrays
-// have the same order. persister is a place for this server to
-// save its persistent state, and also initially holds the most
-// recent saved state, if any. applyCh is a channel on which the
-// tester or service expects Raft to send ApplyMsg messages.
-// Make() must return quickly, so it should start goroutines
-// for any long-running work.
-//
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	serverNum := len(peers)
@@ -470,13 +370,17 @@ func Make(peers []*labrpc.ClientEnd, me int,
 					for{
 						select {
 						case <- rf.heartBeatTimer.C:
-							rf.heartBeatTimer.Stop()
 							if rf.state == leader{
+								rf.mu.Lock()
+								rf.heartBeatTimer.Stop()
 								rf.heartBeatTimer.Reset(heartBeatTime)
+								rf.mu.Unlock()
 								go rf.AppendSend()
 							} else {
+								rf.mu.Lock()
 								rf.electionTimer.Stop()
 								rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "Make goroutine step down")) * time.Millisecond)
+								rf.mu.Unlock()
 								break
 							}
 						case <- rf.forKill:
@@ -487,6 +391,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 					rf.mu.Lock()
 					rf.state = follower
 					rf.electionTimer.Stop()
+					fmt.Printf("launch return false, reset double time.\n")
 					rf.electionTimer.Reset(time.Duration(2 * genVoteTimeOut(rf.me, "Make goroutine election failure")) * time.Millisecond)
 					rf.mu.Unlock()
 				}

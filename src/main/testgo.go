@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"time"
-	"os"
-	"log"
+	"sync"
 )
 
+type teststr struct {
+	mu sync.Mutex
+	num int
+}
 func main(){
 	//s := test()
 	//println(s)
@@ -23,14 +26,41 @@ func main(){
 	//a = a[0:0]
 	//fmt.Printf("a after clear: %v.\n", a)
 
-	fileName := "debug_info.log"
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE, 0777)
-	if err != nil {
-		log.Fatal("Can not create log file, " + err.Error())
+	//fileName := "debug_info.log"
+	//file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE, 0777)
+	//if err != nil {
+	//	log.Fatal("Can not create log file, " + err.Error())
+	//}
+	//debugLog := log.New(file, "aa ", log.Llongfile)
+	//debugLog.Printf("this file name")
+	//file.Close()
+
+	//chanone := make(chan int)
+	//chantwo := make(chan int)
+	//chanthree := make(chan int)
+	//
+	//testmap := make(map[int]chan int)
+	//testmap[2] = chanone
+	//testmap[2] = chantwo
+	//testmap[3] = chanthree
+	//fmt.Printf("test map: %v\n", testmap)
+	//delete(testmap,2)
+	//delete(testmap, 3)
+	//fmt.Printf("test map: %v\n", testmap)
+
+	teststra := teststr{num : 1}
+
+	for i:=0; i<3; i++{
+		go func(no int){
+			fmt.Printf("first this is: %v.\n", no)
+			teststra.mu.Lock()
+			fmt.Printf("a: %v.\n", teststra.num)
+			time.Sleep(5*time.Second)
+			teststra.mu.Unlock()
+			fmt.Printf("last this is: %v.\n", no)
+		}(i)
 	}
-	debugLog := log.New(file, "aa ", log.Llongfile)
-	debugLog.Printf("this file name")
-	file.Close()
+	time.Sleep(20*time.Second)
 }
 
 func test() string{
