@@ -48,19 +48,41 @@ func main(){
 	//delete(testmap, 3)
 	//fmt.Printf("test map: %v\n", testmap)
 
-	teststra := teststr{num : 1}
+	//teststra := teststr{num : 1}
+	//
+	//for i:=0; i<3; i++{
+	//	go func(no int){
+	//		fmt.Printf("first this is: %v.\n", no)
+	//		teststra.mu.Lock()
+	//		fmt.Printf("a: %v.\n", teststra.num)
+	//		time.Sleep(5*time.Second)
+	//		teststra.mu.Unlock()
+	//		fmt.Printf("last this is: %v.\n", no)
+	//	}(i)
+	//}
+	//time.Sleep(20*time.Second)
 
-	for i:=0; i<3; i++{
-		go func(no int){
-			fmt.Printf("first this is: %v.\n", no)
-			teststra.mu.Lock()
-			fmt.Printf("a: %v.\n", teststra.num)
-			time.Sleep(5*time.Second)
-			teststra.mu.Unlock()
-			fmt.Printf("last this is: %v.\n", no)
-		}(i)
-	}
-	time.Sleep(20*time.Second)
+	testTimer := time.NewTimer(2*time.Second)
+	go func(){
+		timeStart := time.Now()
+		time.Sleep(3000*time.Millisecond)
+		testTimer.Reset(3*time.Second)
+		select {
+		case <- testTimer.C:
+			timeEnd := time.Now()
+			fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
+		}
+		testTimer.Reset(4*time.Second)
+		testTimer.Stop()
+		testTimer.Reset(6*time.Second)
+
+		select {
+		case <- testTimer.C:
+			timeEnd := time.Now()
+			fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
+		}
+	}()
+	time.Sleep(12*time.Second)
 }
 
 func test() string{

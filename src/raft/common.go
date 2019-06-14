@@ -15,9 +15,9 @@ type ApplyMsg struct {
 }
 
 type Raft struct {
-	mu sync.RWMutex          // Lock to protect shared access to this peer's state
+	Mu sync.RWMutex          // Lock to protect shared access to this peer's state
 	peers []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
+	Persister *Persister          // Object to hold this peer's persisted state
 	me int                 // this peer's index into peers[]
 	state serverState
 	electionTimer *time.Timer
@@ -37,6 +37,12 @@ type Raft struct {
 	// LeaderVolatileState
 	nextIndex[]	int		// 对于每个服务器，要发送到该服务器的下一个日志条目的索引.
 	matchIndex[] int	// 对于每个服务器，已知在服务器上复制的最高日志条目的索引.
+
+	// For snapshot
+	lastIncludeIndex int
+	lastIncludeTerm int
+
+	maxLogIndex int
 }
 
 type LogEntry struct{
@@ -83,10 +89,8 @@ type InstallSnapshotArgs struct{
 	Term int 				// 领导者的 term
 	LeaderId int			// 便于关注者可以重定向客户端
 	LastIncludedIndex int	// 快照将替换所有包含此索引及之前的条目
-	LastIncludedTerm int	// lastIncludedIndex的 term
-	Offset int				// 字节偏移，其中块位于快照文件中
+	LastIncludedTerm int	// lastIncludedIndex 的 term
 	Data []byte				// 快照块的原始字节，从偏移量开始
-	Done bool				// 如果这是最后一个块，则为true
 }
 
 type InstallSnapshotReply struct {

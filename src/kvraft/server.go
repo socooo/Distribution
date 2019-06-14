@@ -7,6 +7,8 @@ import (
 	"raft"
 	"sync"
 	"time"
+	"bytes"
+	"fmt"
 )
 
 const Debug = 0
@@ -33,13 +35,17 @@ type RaftKV struct {
 	me      int
 	rf      *raft.Raft
 	raftApplyCh chan raft.ApplyMsg
-
 	maxraftstate int // snapshot if log grows this big
 	data map[string]string
 	responseHandler map[int] chan kvApplyMsg
 	lastPutAppendRequest map[int64] int
 
 	forKill chan struct{}
+}
+
+type RaftKvData struct {
+	Data map[string]string
+	LastRequest map[int64] int
 }
 
 
@@ -149,6 +155,7 @@ func (kv *RaftKV) commandApply(raftApplyMsg raft.ApplyMsg){
 			kv.mu.RUnlock()
 			if ok{
 				msg = kvApplyMsg{value: result, err:OK}
+				fmt.Printf("in server commandApply, me: %v,get data: %v.\n", kv.me, result)
 			} else {
 				msg = kvApplyMsg{err: ErrNoKey}
 			}
@@ -166,6 +173,7 @@ func (kv *RaftKV) commandApply(raftApplyMsg raft.ApplyMsg){
 					kv.mu.Lock()
 					kv.data[args.Key] += args.Value
 					kv.mu.Unlock()
+					//fmt.Printf("in server commandApply, me: %v, append data: %v.\n", kv.me, args.Value)
 					msg = kvApplyMsg{err: OK}
 				} else {
 					log.Fatal("Error type.")
@@ -190,19 +198,49 @@ func (kv *RaftKV) run(){
 	for{
 		select {
 		case raftApplyMsg := <- kv.raftApplyCh:
-			//fmt.Printf("receive, me: %v, raft response: %v， len of chan:%v, me: %v.\n",
-			//	kv.me,
-			//	raftApplyMsg,
-			//	len(kv.raftApplyCh), kv.me)
+			fmt.Printf("receive, me: %v, raft response: %v， len of chan:%v, me: %v.\n",
+				kv.me,
+				raftApplyMsg,
+				len(kv.raftApplyCh), kv.me)
 
 			//fmt.Printf("handler: %v.\n", kv.responseHandler)
-			kv.commandApply(raftApplyMsg)
+			if raftApplyMsg.UseSnapshot{
+				//fmt.Printf("receive use snapshot, start load snapshot, me: %v, kvdata: %v.\n", kv.me, kv.data)
+				kv.loadSnapshot(raftApplyMsg.Snapshot)
+			} else {
+				kv.commandApply(raftApplyMsg)
+				if kv.maxraftstate != -1 && kv.rf.Persister.RaftStateSize() >= kv.maxraftstate{
+					fmt.Printf("start snapshot, me: %v, index: %v.\n", kv.me, raftApplyMsg.Index)
+					kv.createSnapshot(raftApplyMsg.Index)
+				}
+			}
 		case <- kv.forKill:
 			return
 		}
 	}
 }
 
+func (kv *RaftKV) loadSnapshot(data []byte){
+	b := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(b)
+	snapData := RaftKvData{}
+	decoder.Decode(&snapData)
+	kv.data = snapData.Data
+	kv.lastPutAppendRequest = snapData.LastRequest
+	fmt.Printf("In load snapshot, me: %v, kv data: %v.\n", kv.me, kv.data)
+}
+
+func (kv *RaftKV) createSnapshot(index int){
+	kv.rf.Mu.Lock()
+	defer kv.rf.Mu.Unlock()
+	b := new(bytes.Buffer)
+	encoder := gob.NewEncoder(b)
+
+	encoder.Encode(RaftKvData{Data: kv.data, LastRequest: kv.lastPutAppendRequest})
+	saveData := b.Bytes()
+	kv.rf.Persister.SaveSnapshot(saveData)
+	kv.rf.LogCompact(index)
+}
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
@@ -226,11 +264,17 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 	kv.data = make(map[string]string)
 
-	kv.raftApplyCh = make(chan raft.ApplyMsg, 10)
+	kv.raftApplyCh = make(chan raft.ApplyMsg, 100)
 	kv.rf = raft.Make(servers, me, persister, kv.raftApplyCh)
 	kv.responseHandler = make(map[int] chan kvApplyMsg)
 	kv.lastPutAppendRequest = make(map[int64]int)
 	kv.forKill = make(chan struct{})
+	if kv.maxraftstate != -1{
+		snapData := kv.rf.Persister.ReadSnapshot()
+		if snapData != nil && len(snapData) > 0{
+			kv.loadSnapshot(snapData)
+		}
+	}
 	go kv.run()
 	return kv
 }

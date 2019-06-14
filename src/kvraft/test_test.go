@@ -198,7 +198,7 @@ func GenericTest(t *testing.T, tag string, nclients int, unreliable bool, crash 
 		}
 
 		if crash {
-			// log.Printf("shutdown servers\n")
+			fmt.Printf("shutdown servers\n")
 			for i := 0; i < nservers; i++ {
 				cfg.ShutdownServer(i)
 			}
@@ -211,6 +211,7 @@ func GenericTest(t *testing.T, tag string, nclients int, unreliable bool, crash 
 				cfg.StartServer(i)
 			}
 			cfg.ConnectAll()
+			fmt.Printf("shutdown finish\n")
 		}
 
 		// log.Printf("wait for clients\n")
@@ -420,6 +421,7 @@ func TestSnapshotRPC(t *testing.T) {
 	check(t, ck, "a", "A")
 
 	// a bunch of puts into the majority partition.
+	fmt.Printf("in testsnapshot, start partition first.\n")
 	cfg.partition([]int{0, 1}, []int{2})
 	{
 		ck1 := cfg.makeClient([]int{0, 1})
@@ -438,6 +440,7 @@ func TestSnapshotRPC(t *testing.T) {
 
 	// now make group that requires participation of
 	// lagging server, so that it has to catch up.
+	fmt.Printf("in testsnapshot, start partition second.\n")
 	cfg.partition([]int{0, 2}, []int{1})
 	{
 		ck1 := cfg.makeClient([]int{0, 2})
@@ -450,6 +453,7 @@ func TestSnapshotRPC(t *testing.T) {
 	}
 
 	// now everybody
+	fmt.Printf("in testsnapshot, end partition.\n")
 	cfg.partition([]int{0, 1, 2}, []int{})
 
 	ck.Put("e", "E")
