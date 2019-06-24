@@ -119,7 +119,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.electionTimer.Stop()
 		rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "RequestVote"))*time.Millisecond)
 	}
-	//fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[lastLogIndex], reason)
+	fmt.Printf("servernum: %v, before request vote return,ask for vote: %v, reply content, term:%v, vote granted:%v, my commit index: %v,args: %v, last log: %v, reason:%v.\n", rf.me, args.CandidateId, reply.Term, reply.VoteGranted, rf.CommitIndex, args, rf.LogEntries[lastLogIndex], reason)
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply){
@@ -127,7 +127,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.electionTimer.Stop()
 	rf.electionTimer.Reset(time.Duration(genVoteTimeOut(rf.me, "AppendEntries"))*time.Millisecond)
 	lastLogIndex := rf.maxLogIndex
-	fmt.Printf("In append entries, send from: %v, this serverNo: %v,current term: %v, args: %v.\n", args.LeaderId, rf.me, rf.CurrentTerm, args)
+	// fmt.Printf("In append entries, send from: %v, this serverNo: %v,current term: %v, args: %v.\n", args.LeaderId, rf.me, rf.CurrentTerm, args)
 	reply.MatchIndex = args.PrevLogIndex
 	entries := args.Entries
 	appendLen := len(entries)
@@ -186,13 +186,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				}
 				rf.LogEntries = append(rf.LogEntries, args.Entries...)
 				rf.maxLogIndex = args.Entries[len(args.Entries) - 1].LogIndex
-				fmt.Printf("in append entries: this server: %v, leader no: %v, PrevIndex: %v, log len: %v, append init done, content: %v, maxIndex: %v.\n", rf.me, rf.VotedFor, args.PrevLogIndex, len(rf.LogEntries), rf.LogEntries, rf.maxLogIndex)
+				// fmt.Printf("in append entries: this server: %v, leader no: %v, PrevIndex: %v, log len: %v, append init done, content: %v, maxIndex: %v.\n", rf.me, rf.VotedFor, args.PrevLogIndex, len(rf.LogEntries), rf.LogEntries, rf.maxLogIndex)
 			}else if args.PrevLogIndex > rf.maxLogIndex{
 				// 若此 server 断线重连后， CommitIndex 可能落后于主服务器很多条 LogEntries，需要重新发送这些 LogEntries。
 				reply.ConflictIndex = rf.CommitIndex + 1
 				reply.Success = false
 				reply.Term = rf.CurrentTerm
-				fmt.Printf("in AE, conflict, this: %v, conflict: %v, leader: %v, args content: %v.\n", rf.me, reply.ConflictIndex, args.LeaderId, args)
+				// fmt.Printf("in AE, conflict, this: %v, conflict: %v, leader: %v, args content: %v.\n", rf.me, reply.ConflictIndex, args.LeaderId, args)
 				rf.Mu.Unlock()
 				return
 			} else {

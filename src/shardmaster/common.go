@@ -1,5 +1,11 @@
 package shardmaster
 
+import (
+	"sync"
+	"time"
+	"raft"
+)
+
 //
 // Master shard server: assigns shards to replication groups.
 //
@@ -23,6 +29,20 @@ package shardmaster
 // The number of shards.
 const NShards = 10
 
+type ShardMaster struct {
+	mu      sync.Mutex
+	me      int
+	rf      *raft.Raft
+	raftApplyCh chan raft.ApplyMsg
+
+	lastRequest map[int64] int	// clientId -> requestIndex
+	responseHandler map[int]chan shardMasterApplyMsg
+	forKill chan struct{}
+	configs []Config // indexed by config num
+}
+
+const smApplyTimeout = time.Duration(2 * time.Second)
+
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
 type Config struct {
@@ -32,45 +52,70 @@ type Config struct {
 }
 
 const (
-	OK = "OK"
+	OK Err = "OK"
+	WrongLeader = "WrongLeader"
+	TimeOut = "ApplyTimeOut"
+	DuplicateRequest = "DuplicateRequest"
 )
 
 type Err string
 
 type JoinArgs struct {
 	Servers map[int][]string // new GID -> servers mappings
+	RequestIndex int
+	ClientId int64
 }
 
 type JoinReply struct {
-	WrongLeader bool
 	Err         Err
 }
 
 type LeaveArgs struct {
 	GIDs []int
+	RequestIndex int
+	ClientId int64
 }
 
 type LeaveReply struct {
-	WrongLeader bool
 	Err         Err
 }
 
 type MoveArgs struct {
 	Shard int
 	GID   int
+	RequestIndex int
+	ClientId int64
 }
 
 type MoveReply struct {
-	WrongLeader bool
 	Err         Err
 }
 
 type QueryArgs struct {
 	Num int // desired config number
+	RequestIndex int
+	ClientId int64
 }
 
 type QueryReply struct {
-	WrongLeader bool
 	Err         Err
 	Config      Config
+}
+
+type shardMasterApplyMsg struct {
+	requestIndex int
+	clientId int64
+}
+
+type SmOpType int
+
+const(
+	Join SmOpType = iota
+	Leave
+	Move
+	Query
+)
+
+type handleReply struct {
+	err Err
 }

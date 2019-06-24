@@ -56,7 +56,7 @@ func (rf *Raft) persist() {
 //
 func (rf *Raft) readPersist() {
 	data := rf.Persister.ReadRaftState()
-
+	fmt.Printf("read persist.\n")
 	if data == nil || len(data) < 1 {
 		return
 	}
@@ -127,7 +127,7 @@ func (rf *Raft) launchElection() bool{
 				VoteGranted:false}
 			//fmt.Printf("in launch election, server: %v send voteRequest to : %v, term: %v, reply content: %v.\n", rf.me, j, rf.CurrentTerm, reply)
 			if rf.sendRequestVote(j, &voteArgs, &voteReply){
-				fmt.Printf("in launch election for term: %v, server: %v, return content: %v.\n", rf.CurrentTerm, rf.me, voteReply)
+				// fmt.Printf("in launch election for term: %v, server: %v, return content: %v.\n", rf.CurrentTerm, rf.me, voteReply)
 				voteChan <- voteReply
 			} else {
 				voteChan <- RequestVoteReply{SendOk:false, Destination:j}
@@ -189,7 +189,7 @@ func (rf *Raft) Apply(indexOfApply int, useSnapshot bool){
 			return
 		}
 		if indexOfApply > rf.lastApplied{
-			fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, rf.maxLogIndex, rf.lastApplied)
+			// fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, rf.maxLogIndex, rf.lastApplied)
 			for j := oldLastApplied + 1; j <= indexOfApply; j++ {
 				jInLog, ok := rf.findLogIndex(j)
 				if !ok{
@@ -200,10 +200,10 @@ func (rf *Raft) Apply(indexOfApply int, useSnapshot bool){
 
 				rf.lastApplied = j
 				rf.CommitIndex = j
-				fmt.Printf("in Apply, before send. server: %v, commit index: %v, channel len: %v.\n", rf.me, rf.CommitIndex, len(rf.applyChan))
+				// fmt.Printf("in Apply, before send. server: %v, commit index: %v, channel len: %v.\n", rf.me, rf.CommitIndex, len(rf.applyChan))
 				rf.applyChan <- newApplyMsg
 			}
-			fmt.Printf("Apply done. server: %v, commit index: %v.\n", rf.me, rf.CommitIndex)
+			// fmt.Printf("Apply done. server: %v, commit index: %v.\n", rf.me, rf.CommitIndex)
 			rf.persist()
 		}
 		return
@@ -267,7 +267,7 @@ func (rf *Raft) AppendSend(){
 						rf.matchIndex[serverNo] = rf.lastIncludeIndex
 						rf.nextIndex[serverNo] = rf.lastIncludeIndex + 1
 						rf.persist()
-						fmt.Printf("in AppendSend, send snapshot ok, me:%v, to: %v, sendFirst: %v, lastInclude: %v.\n", rf.me, serverNo, sendFirst, rf.lastIncludeIndex)
+						// fmt.Printf("in AppendSend, send snapshot ok, me:%v, to: %v, sendFirst: %v, lastInclude: %v.\n", rf.me, serverNo, sendFirst, rf.lastIncludeIndex)
 					}
 				}
 				rf.Mu.Unlock()
@@ -314,7 +314,7 @@ func (rf *Raft) AppendSend(){
 										rf.matchIndex[serverNo] = rf.lastIncludeIndex
 										rf.nextIndex[serverNo] = rf.lastIncludeIndex + 1
 										rf.persist()
-										fmt.Printf("in AppendSend, send snapshot in retry ok, me:%v, to: %v, conflict index: %v, last include: %v.\n", rf.me, serverNo, appendReply.ConflictIndex, rf.lastIncludeIndex)
+										// fmt.Printf("in AppendSend, send snapshot in retry ok, me:%v, to: %v, conflict index: %v, last include: %v.\n", rf.me, serverNo, appendReply.ConflictIndex, rf.lastIncludeIndex)
 									}
 								}
 								rf.Mu.Unlock()
@@ -360,7 +360,7 @@ func (rf *Raft) AppendSend(){
 }
 
 func (rf *Raft) constructAppendEntriesArgs(serverNo int, sendFirst int, sendFinal int, currentCommit int, currentTerm int) (appendArg AppendEntriesArgs){
-	fmt.Printf("in construct, to: %v, sendFirst: %v, sendFinal: %v, matchIndex: %v, nextIndex: %v, logIndex: %v, CommitIndex: %v, term: %v, this server: %v.\n", serverNo, sendFirst, sendFinal, rf.matchIndex[serverNo], rf.nextIndex[serverNo], rf.maxLogIndex, rf.CommitIndex, rf.CurrentTerm, rf.me)
+	//fmt.Printf("in construct, to: %v, sendFirst: %v, sendFinal: %v, matchIndex: %v, nextIndex: %v, logIndex: %v, CommitIndex: %v, term: %v, this server: %v.\n", serverNo, sendFirst, sendFinal, rf.matchIndex[serverNo], rf.nextIndex[serverNo], rf.maxLogIndex, rf.CommitIndex, rf.CurrentTerm, rf.me)
 	if sendFirst >= sendFinal {
 		if sendFinal - 1 <= rf.lastIncludeIndex{
 			appendArg = AppendEntriesArgs{
@@ -397,7 +397,7 @@ func (rf *Raft) constructAppendEntriesArgs(serverNo int, sendFirst int, sendFina
 		}
 
 		entries := rf.LogEntries[sendFirstInLog: sendFinalInLog + 1]
-		fmt.Printf("in construct, start send, server: %v, to: %v, sendFirst: %v, sendFinal: %v, firstInLog: %v, finalInLog: %v.\n",rf.me, serverNo, sendFirst, sendFinal, sendFirstInLog, sendFinalInLog)
+		// fmt.Printf("in construct, start send, server: %v, to: %v, sendFirst: %v, sendFinal: %v, firstInLog: %v, finalInLog: %v.\n",rf.me, serverNo, sendFirst, sendFinal, sendFirstInLog, sendFinalInLog)
 
 		if sendFirstInLog == 0{
 			appendArg = AppendEntriesArgs{
@@ -526,7 +526,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 					rf.Mu.Lock()
 					rf.state = follower
 					rf.electionTimer.Stop()
-					fmt.Printf("launch return false, reset double time.\n")
+					// fmt.Printf("launch return false, reset double time.\n")
 					rf.electionTimer.Reset(time.Duration(2 * genVoteTimeOut(rf.me, "Make goroutine election failure")) * time.Millisecond)
 					rf.Mu.Unlock()
 				}
@@ -552,12 +552,19 @@ func (rf *Raft) findLogIndex(logIndex int) (int, bool){
 }
 
 func (rf *Raft) replay(){
+	println("start reply, fetching lock.")
 	if rf.lastIncludeIndex != 0 && rf.lastIncludeIndex < rf.maxLogIndex{
 		rf.Mu.Lock()
 		rf.lastApplied = rf.lastIncludeIndex
 		rf.CommitIndex = rf.lastIncludeIndex
 		rf.Mu.Unlock()
-		fmt.Printf("start replay, maxIndex: %v, lastInclude: %v, me:%v.\n", rf.maxLogIndex, rf.lastIncludeIndex, rf.me)
+		go rf.Apply(rf.maxLogIndex, false)
+	} else if rf.lastIncludeIndex == 0 && rf.maxLogIndex > 0{
+		println("max index > 0, replaying.\n")
+		rf.Mu.Lock()
+		rf.lastApplied = rf.lastIncludeIndex
+		rf.CommitIndex = rf.lastIncludeIndex
+		rf.Mu.Unlock()
 		go rf.Apply(rf.maxLogIndex, false)
 	}
 }

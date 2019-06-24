@@ -62,27 +62,37 @@ func main(){
 	//}
 	//time.Sleep(20*time.Second)
 
-	testTimer := time.NewTimer(2*time.Second)
-	go func(){
-		timeStart := time.Now()
-		time.Sleep(3000*time.Millisecond)
-		testTimer.Reset(3*time.Second)
-		select {
-		case <- testTimer.C:
-			timeEnd := time.Now()
-			fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
-		}
-		testTimer.Reset(4*time.Second)
-		testTimer.Stop()
-		testTimer.Reset(6*time.Second)
+	//testTimer := time.NewTimer(2*time.Second)
+	//go func(){
+	//	timeStart := time.Now()
+	//	time.Sleep(3000*time.Millisecond)
+	//	testTimer.Reset(3*time.Second)
+	//	select {
+	//	case <- testTimer.C:
+	//		timeEnd := time.Now()
+	//		fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
+	//	}
+	//	testTimer.Reset(4*time.Second)
+	//	testTimer.Stop()
+	//	testTimer.Reset(6*time.Second)
+	//
+	//	select {
+	//	case <- testTimer.C:
+	//		timeEnd := time.Now()
+	//		fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
+	//	}
+	//}()
+	//time.Sleep(12*time.Second)
 
-		select {
-		case <- testTimer.C:
-			timeEnd := time.Now()
-			fmt.Printf("time eclipse: %v.\n", timeEnd.Second() - timeStart.Second())
-		}
-	}()
-	time.Sleep(12*time.Second)
+	a:=2
+	switch a {
+	case 1: println(1)
+	case 2: println(2)
+		break
+	case 3: println(3)
+	default:
+		println("no such number.")
+	}
 }
 
 func test() string{
