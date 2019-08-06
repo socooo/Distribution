@@ -84,15 +84,16 @@ func main(){
 	//}()
 	//time.Sleep(12*time.Second)
 
-	a:=2
-	switch a {
-	case 1: println(1)
-	case 2: println(2)
-		break
-	case 3: println(3)
-	default:
-		println("no such number.")
-	}
+	//a:=4
+	//switch a {
+	//case 1: println(1)
+	//case 2: println(2)
+	//case 3: println(3)
+	//}
+	//println("int")
+	m := make(map[int]int)
+	m[0] = 1
+	println(m[0])
 }
 
 func test() string{

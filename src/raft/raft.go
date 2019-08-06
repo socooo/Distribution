@@ -189,7 +189,7 @@ func (rf *Raft) Apply(indexOfApply int, useSnapshot bool){
 			return
 		}
 		if indexOfApply > rf.lastApplied{
-			// fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, rf.maxLogIndex, rf.lastApplied)
+			//fmt.Printf("in Apply server: %v, apply index: %v, last index: %v, last applied: %v.\n", rf.me, indexOfApply, rf.maxLogIndex, rf.lastApplied)
 			for j := oldLastApplied + 1; j <= indexOfApply; j++ {
 				jInLog, ok := rf.findLogIndex(j)
 				if !ok{
@@ -200,7 +200,7 @@ func (rf *Raft) Apply(indexOfApply int, useSnapshot bool){
 
 				rf.lastApplied = j
 				rf.CommitIndex = j
-				// fmt.Printf("in Apply, before send. server: %v, commit index: %v, channel len: %v.\n", rf.me, rf.CommitIndex, len(rf.applyChan))
+				//fmt.Printf("in Apply, before send. server: %v, commit index: %v, channel len: %v.\n", rf.me, rf.CommitIndex, len(rf.applyChan))
 				rf.applyChan <- newApplyMsg
 			}
 			// fmt.Printf("Apply done. server: %v, commit index: %v.\n", rf.me, rf.CommitIndex)
@@ -231,13 +231,18 @@ func (rf *Raft) AppendSend(){
 	rf.Mu.Lock()
 	lastLogIndex := rf.maxLogIndex
 	checkApplyNo := lastLogIndex
-	checkApplyNoInLog, ok := rf.findLogIndex(checkApplyNo)
-	if !ok{
-		log.Fatalf("Index %v is not exist in AppendSend.\n", checkApplyNo)
+	var checkApplyTerm int
+	if checkApplyNo > rf.lastIncludeIndex {
+		checkApplyNoInLog, ok := rf.findLogIndex(checkApplyNo)
+		checkApplyTerm = rf.LogEntries[checkApplyNoInLog].Term
+		if !ok {
+			log.Fatalf("Index %v is not exist in AppendSend,me: %v.\n", checkApplyNo, rf.me)
+		}
+	} else {
+		checkApplyTerm = rf.lastIncludeTerm
 	}
 	sendFinal := lastLogIndex + 1
 	serverNum := len(rf.peers)
-	checkApplyTerm := rf.LogEntries[checkApplyNoInLog].Term
 	rf.Mu.Unlock()
 	currentCommit := rf.CommitIndex
 	currentTerm := rf.CurrentTerm
@@ -492,8 +497,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.readPersist()
 	rf.replay()
 
-	//fmt.Printf("server: %v, init done.\n",me)
-
 	go func(myNum int) {
 		rf.electionTimer = time.NewTimer(time.Duration(genVoteTimeOut(rf.me, "Make goroutine init")) * time.Millisecond)
 		for{
@@ -552,7 +555,7 @@ func (rf *Raft) findLogIndex(logIndex int) (int, bool){
 }
 
 func (rf *Raft) replay(){
-	println("start reply, fetching lock.")
+	//println("start reply, fetching lock.")
 	if rf.lastIncludeIndex != 0 && rf.lastIncludeIndex < rf.maxLogIndex{
 		rf.Mu.Lock()
 		rf.lastApplied = rf.lastIncludeIndex
@@ -560,7 +563,7 @@ func (rf *Raft) replay(){
 		rf.Mu.Unlock()
 		go rf.Apply(rf.maxLogIndex, false)
 	} else if rf.lastIncludeIndex == 0 && rf.maxLogIndex > 0{
-		println("max index > 0, replaying.\n")
+		//println("max index > 0, replaying.\n")
 		rf.Mu.Lock()
 		rf.lastApplied = rf.lastIncludeIndex
 		rf.CommitIndex = rf.lastIncludeIndex

@@ -160,22 +160,28 @@ func TestSnapshot(t *testing.T) {
 	cfg.join(2)
 	cfg.leave(0)
 
+	println("in TestSnapshot, leave 0.")
+
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
+	println("in TestSnapshot, before leave 1.")
 
 	cfg.leave(1)
 	cfg.join(0)
 
+	println("in TestSnapshot, leave 1, join 0.")
+
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
+	println("in TestSnapshot, before sleep.")
 
 	time.Sleep(1 * time.Second)
 
@@ -184,6 +190,7 @@ func TestSnapshot(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
+	println("in TestSnapshot, before check logs.")
 
 	cfg.checklogs()
 
@@ -191,9 +198,12 @@ func TestSnapshot(t *testing.T) {
 	cfg.ShutdownGroup(1)
 	cfg.ShutdownGroup(2)
 
+	println("in TestSnapshot, shutdown all group.")
+
 	cfg.StartGroup(0)
 	cfg.StartGroup(1)
 	cfg.StartGroup(2)
+	println("in TestSnapshot, start all group.")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])

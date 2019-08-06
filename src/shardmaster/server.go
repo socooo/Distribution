@@ -7,46 +7,45 @@ import (
 	"encoding/gob"
 	"log"
 	"time"
-	"fmt"
 )
 
 func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
-	fmt.Printf("in shard master, start join, args: %v.\n", args)
+	//fmt.Printf("in shard master, start join, args: %v.\n", args)
 	if sm.isRequestDuplicate(args.ClientId, args.RequestIndex){
 		reply.Err = DuplicateRequest
 		return
 	}
 	handlerResult := sm.handleRequest(sm.rf.Start(*args))
 	reply.Err = handlerResult.err
-	fmt.Printf("join reply: %v.\n", reply)
+	//fmt.Printf("join reply: %v.\n", reply)
 }
 
 func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
-	fmt.Printf("in shard master, start leave, args: %v.\n", args)
+	//fmt.Printf("in shard master, start leave, args: %v.\n", args)
 	if sm.isRequestDuplicate(args.ClientId, args.RequestIndex){
 		reply.Err = DuplicateRequest
 		return
 	}
 	handlerResult := sm.handleRequest(sm.rf.Start(*args))
 	reply.Err = handlerResult.err
-	fmt.Printf("leave reply: %v.\n", reply)
+	//fmt.Printf("leave reply: %v.\n", reply)
 
 }
 
 func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
-	fmt.Printf("in shard master, start move, args: %v.\n", args)
+	//fmt.Printf("in shard master, start move, args: %v.\n", args)
 	if sm.isRequestDuplicate(args.ClientId, args.RequestIndex){
 		reply.Err = DuplicateRequest
 		return
 	}
 	handlerResult := sm.handleRequest(sm.rf.Start(*args))
 	reply.Err = handlerResult.err
-	fmt.Printf("move reply: %v.\n", reply)
+	//fmt.Printf("move reply: %v.\n", reply)
 
 }
 
 func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
-	fmt.Printf("in shard master, start query, args: %v.\n", *args)
+	//fmt.Printf("in shard master, start query, args: %v.\n", *args)
 	if sm.isRequestDuplicate(args.ClientId, args.RequestIndex){
 		reply.Err = DuplicateRequest
 		return
@@ -60,12 +59,12 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 		if args.Num < 0 || args.Num > len(sm.configs){
 			reply.Config = sm.configs[len(sm.configs) - 1]
 		} else {
-			fmt.Printf("in query, args.num: %v, config: %v, me: %v.\n", args.Num, sm.configs, sm.me)
+			//fmt.Printf("in query, args.num: %v, config: %v, me: %v.\n", args.Num, sm.configs, sm.me)
 			reply.Config = sm.configs[args.Num]
 		}
 		sm.mu.Unlock()
 	}
-	fmt.Printf("query reply: %v.\n", reply)
+	//fmt.Printf("query reply: %v， me: %v.\n", reply, sm.me)
 }
 
 func (sm *ShardMaster) isRequestDuplicate(clientId int64, requestIndex int) bool{
@@ -82,7 +81,7 @@ func (sm *ShardMaster) handleRequest(index int, term int, isLeader bool) handleR
 		sm.mu.Lock()
 		sm.responseHandler[index] = waitApplyCh
 		sm.mu.Unlock()
-		fmt.Printf("in handleRequest, create handle:%v.\n", sm.responseHandler)
+		//fmt.Printf("in handleRequest, create handle:%v.\n", sm.responseHandler)
 		select {
 		case msg := <- waitApplyCh:
 			sm.mu.Lock()
@@ -134,7 +133,7 @@ func (sm *ShardMaster) commandApply(raftApplyMsg raft.ApplyMsg){
 	defer sm.mu.Unlock()
 
 	msg := shardMasterApplyMsg{}
-	fmt.Printf("in commandApply, msg: %v, me: %v.\n", raftApplyMsg, sm.me)
+	//fmt.Printf("in commandApply, msg: %v, me: %v.\n", raftApplyMsg, sm.me)
 	smLastConfig := sm.configs[len(sm.configs) - 1]
 	// map 是引用拷贝，需要重新创建 map 对象并赋值。
 	var groupCopy = make(map[int] []string)
@@ -148,7 +147,7 @@ func (sm *ShardMaster) commandApply(raftApplyMsg raft.ApplyMsg){
 
 	switch raftApplyMsg.Command.(type) {
 	case JoinArgs:
-		fmt.Printf("start join apply, me: %v.\n",sm.me)
+		//fmt.Printf("start join apply, me: %v.\n",sm.me)
 		joinArgs := raftApplyMsg.Command.(JoinArgs)
 		for gid, servers := range joinArgs.Servers{
 			smConfigCopy.Groups[gid] = servers
@@ -157,10 +156,10 @@ func (sm *ShardMaster) commandApply(raftApplyMsg raft.ApplyMsg){
 		sm.configs = append(sm.configs, smConfigCopy)
 		msg.clientId = joinArgs.ClientId
 		msg.requestIndex = joinArgs.RequestIndex
-		fmt.Printf("finish join apply, me: %v, config: %v.\n",sm.me, sm.configs)
+		//fmt.Printf("finish join apply, me: %v, config: %v.\n",sm.me, sm.configs)
 
 	case MoveArgs:
-		fmt.Printf("start move apply, me: %v.\n", sm.me)
+		//fmt.Printf("start move apply, me: %v.\n", sm.me)
 		moveArgs := raftApplyMsg.Command.(MoveArgs)
 		destGid := moveArgs.GID
 		movingShard := moveArgs.Shard
@@ -168,10 +167,10 @@ func (sm *ShardMaster) commandApply(raftApplyMsg raft.ApplyMsg){
 		sm.configs = append(sm.configs, smConfigCopy)
 		msg.clientId = moveArgs.ClientId
 		msg.requestIndex = moveArgs.RequestIndex
-		fmt.Printf("finish move apply, me: %v.\n", sm.me)
+		//fmt.Printf("finish move apply, me: %v.\n", sm.me)
 
 	case LeaveArgs:
-		fmt.Printf("start leave apply, me: %v.\n", sm.me)
+		//fmt.Printf("start leave apply, me: %v.\n", sm.me)
 		leaveArgs := raftApplyMsg.Command.(LeaveArgs)
 		for _, gid := range leaveArgs.GIDs{
 			for shardIndex, gidInShard := range smConfigCopy.Shards{
@@ -185,21 +184,21 @@ func (sm *ShardMaster) commandApply(raftApplyMsg raft.ApplyMsg){
 		sm.configs = append(sm.configs, smConfigCopy)
 		msg.clientId = leaveArgs.ClientId
 		msg.requestIndex = leaveArgs.RequestIndex
-		fmt.Printf("finish leave apply, me: %v.\n", sm.me)
+		//fmt.Printf("finish leave apply, me: %v.\n", sm.me)
 
 	case QueryArgs:
-		println("start query apply.")
+		//println("start query apply.")
 		queryArgs := raftApplyMsg.Command.(QueryArgs)
 		msg.clientId = queryArgs.ClientId
 		msg.requestIndex = queryArgs.RequestIndex
-		fmt.Printf("finish query apply, me: %v, config: %v.\n", sm.me, sm.configs)
+		//fmt.Printf("finish query apply, me: %v, config: %v.\n", sm.me, sm.configs)
 		break
 
 	default:
 		log.Fatalf("Wrong request type.\n", )
 	}
 	if handler, isExist := sm.responseHandler[raftApplyMsg.Index]; isExist{
-		fmt.Printf("in commandApply, handle exist.\n")
+		//fmt.Printf("in commandApply, handle exist.\n")
 		handler <- msg
 	}
 

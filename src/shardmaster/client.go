@@ -9,7 +9,6 @@ import "time"
 import "crypto/rand"
 import (
 	"math/big"
-	"fmt"
 )
 
 type Clerk struct {
@@ -47,7 +46,6 @@ func (ck *Clerk) Query(num int) Config {
 			if ok && reply.Err == OK {
 				return reply.Config
 			}
-			fmt.Printf("in client, query reply; %v.\n", reply)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
